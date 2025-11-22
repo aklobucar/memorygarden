@@ -1,144 +1,282 @@
-var blobs = [];
-var colors;
-let variation = 0;
-let xScale, yScale, centerX, centerY;
+// Memory Garden — procedural + parametric story
+// Interact: click to plant, hover to reveal fragments, 1/2/3 switch memory themes,
+// slider controls growth speed, End to finish (ending changes by flowers planted).
 
-//auto change
-let changeDuration = 3000;
-let lastChange = 0;
+let scene = 'garden';        // 'garden' | 'endingA' | 'endingB'
+let flowers = [];
+let growthSlider, btnEnd, btnRestart;
+let currentTheme = 'mixed';  // 'sight' | 'sound' | 'smell' | 'mixed'
+let plantedCount = 0;
+let revealedCount = 0;
+let lastHoverText = "";
+let lastHoverTime = 0;
+
+const fragments = {
+  sight: [
+    "Neon glow,refracting off puddles",
+    "A  clear window displaying a beautiful city",
+    "Distant cities portraid under the orange skyline",
+    "Paper cranes resting on a window sill",
+    "Keys shining like stars"
+  ],
+  sound: [
+    "Subway roaring underfoot",
+    "Distant sirens quickly getting louder",
+    "A kettle murmuring softly",
+    "Shoes squeaking",
+    "Coins making their presence known"
+  ],
+  smell: [
+    "Fresh rain and grass, leaving the environment earthy",
+    "Pungent citrus aroma wafting from the juice",
+    "Laundry freshening up the stairwell",
+    "Buttery popcorn smell, cutting through the air",
+    "Thick Tires, recently burned"
+  ]
+};
 
 function setup() {
-	createCanvas(windowWidth, windowHeight);
-	textAlign(CENTER, CENTER);
-	
-	xScale = width/20;
-	yScale = height/20*(width/height);
-	
-	centerX = width/2;
-	centerY = height/2;
-	
-	colors = [color("#581845"), color("#900C3F"), color("#C70039"), color("#FF5733"), color("#FFC30F")];
+  createCanvas(windowWidth, windowHeight);
+  textFont('system-ui');
+  noStroke();
+
+  // Start with a few procedural blooms
+  for (let i = 0; i < 8; i++) {
+    flowers.push(new Flower(random(width), random(height*0.25, height*0.9)));
+  }
+
+  // Parametric control: growth speed
+  growthSlider = createSlider(0.2, 3.0, 1.0, 0.01);
+  growthSlider.position(20, 20);
+  growthSlider.style('width', '220px');
+  growthSlider.elt.title = "Growth speed";
+
+  // Buttons
+  btnEnd = makeBtn("End", 20, 60, () => {
+    scene = (plantedCount >= 12 || revealedCount >= 12) ? 'endingB' : 'endingA';
+    toggleButtons();
+  });
+  btnRestart = makeBtn("Restart", 90, 60, () => {
+    scene = 'garden';
+    flowers = [];
+    plantedCount = 0;
+    revealedCount = 0;
+    lastHoverText = "";
+    for (let i = 0; i < 8; i++) flowers.push(new Flower(random(width), random(height*0.25, height*0.9)));
+    toggleButtons();
+  });
+  toggleButtons();
+}
+
+function makeBtn(label, x, y, handler) {
+  let b = createButton(label);
+  b.position(x, y);
+  b.mousePressed(handler);
+  b.style('padding','6px 12px');
+  b.style('border','none');
+  b.style('border-radius','12px');
+  b.style('background','#222');
+  b.style('color','#eee');
+  b.style('cursor','pointer');
+  b.style('box-shadow','0 2px 8px rgba(0,0,0,0.25)');
+  return b;
 }
 
 function draw() {
-	/*
-	//DEBUG
-	textSize(20);
-	noStroke();
-	fill(255);
-	ellipse(centerX, centerY, 60, 60);
-	fill(0);
-	text(variation, centerX, centerY-10);
-	text(length, centerX, centerY+10);
-	*/
-	
-	if(mouseIsPressed){
-		for(let i = 0; i < 20; i++){
-			let x = mouseX + random(-100, 100);
-			let y = mouseY + random(-100, 100);
-			var blob = {
-				x : getXPos(x),
-				y : getYPos(y),
-				size : random(1, 5),
-				lastX : x,
-				lastY : y,
-				color : colors[floor(random(colors.length))],
-				direction : random(0.1, 1) * (random() > 0.5 ? 1 : -1)
-			};
-			blobs.push(blob);
-		}
-	}
-	
-	var length = blobs.length;
-	if(length == 0){
-		background("#1a0633");
-		noStroke();
-		fill(255);
-		textSize(40);
-		text("Press to emmit particles", centerX, centerY);
-		return;
-	}
-	
-	noStroke();
-	fill(26, 6, 51, 10);
-	rect(0, 0, width, height);
-	
-	//auto change
-	let time = millis();
-	if(time - lastChange > changeDuration) {
-		lastChange = time;
-		variation++;
-		if(variation>11) variation = 0;
-	}
+  // background gradient + slow noise drift
+  let t = frameCount * 0.002;
+  for (let y = 0; y < height; y += 2) {
+    let n = noise(y * 0.003, t);
+    let base = map(n, 0, 1, 8, 28);
+    stroke(base + 10, base + 12, base + 14);
+    line(0, y, width, y);
+  }
+  noStroke();
 
-	var stepsize = deltaTime*0.002;
-	for(var i = length-1; i >= 0; i--){
-		let blob = blobs[i];
+  // twinkling dust
+  for (let i = 0; i < 120; i++) {
+    let x = (i*79 + frameCount*0.15) % width;
+    let y = noise(i*0.07, frameCount*0.01) * height;
+    fill(230, 230, 230, 120);
+    rect(x, y, 1, 1);
+  }
 
-		var x = getSlopeX(blob.x, blob.y);
-		var y = getSlopeY(blob.x, blob.y);
-		blob.x += blob.direction * x * stepsize;
-		blob.y += blob.direction * y * stepsize;
-		
-		x = getXPrint(blob.x);
-		y = getYPrint(blob.y);
-		stroke(blob.color);
-		strokeWeight(blob.size);
-		line(x, y, blob.lastX, blob.lastY);
-		blob.lastX = x;
-		blob.lastY = y;
-		
-		const border = 200;
-		if(x < -border || y < -border || x > width+border || y > height+border){
-			blobs.splice(i,1);
-		}
-	}
+  if (scene === 'garden') {
+    let speed = growthSlider.value();
+
+    // grow and draw flowers
+    for (let f of flowers) {
+      f.update(speed);
+      f.draw();
+    }
+
+    // hover reveal
+    let hovered = getHoveredFlower();
+    if (hovered) {
+      if (millis() - lastHoverTime > 400) {
+        lastHoverText = getFragment();
+        lastHoverTime = millis();
+        revealedCount++;
+      }
+      drawFragmentBubble(lastHoverText, mouseX, mouseY);
+    }
+
+    drawHUD();
+  } else {
+    drawEnding();
+  }
 }
 
-function getSlopeY(x, y){
-	switch(variation){
-		case 0:return Math.sin(x);
-		case 1:return Math.sin(x*5)*y*0.3;
-		case 2:return Math.cos(x*y);
-		case 3:return Math.sin(x)*Math.cos(y);
-		case 4:return Math.cos(x)*y*y;
-		case 5:return Math.log(Math.abs(x))*Math.log(Math.abs(y));
-		case 6:return Math.tan(x)*Math.cos(y);
-		case 7:return -Math.sin(x*0.1)*3;//orbit
-		case 8:return (x-x*x*x)*0.01;//two orbits
-		case 9:return -Math.sin(x);
-		case 10:return -y-Math.sin(1.5*x) + 0.7;
-		case 11:return Math.sin(x)*Math.cos(y);
-	}
-}
-	
-function getSlopeX(x,y){
-	switch(variation){
-		case 0:return Math.cos(y);
-		case 1:return Math.cos(y*5)*x*0.3;
-		case 2: 
-		case 3: 
-		case 4: 
-		case 5: 
-		case 6:return 1;
-		case 7:return Math.sin(y*0.1)*3;//orbit
-		case 8:return y/3;//two orbits
-		case 9:return -y;		
-		case 10:return -1.5*y;
-		case 11:return Math.sin(y)*Math.cos(x);
-	}
+function drawHUD() {
+  fill(190);
+  textSize(14);
+  text("Growth speed", 250, 24);
+
+  let themeLabel = {
+    mixed: "Mixed",
+    sight: "Sight [1]",
+    sound: "Sound [2]",
+    smell: "Smell [3]"
+  }[currentTheme];
+
+  fill(220);
+  textSize(16);
+  text("Theme: " + themeLabel, 20, 100);
+
+  fill(180);
+  textSize(14);
+  text("Click to plant • Hover to read • 1/2/3 switch theme • End when ready", 20, height - 30);
+
+  fill(200);
+  text(`Planted: ${plantedCount}  Revealed: ${revealedCount}`, width - 220, 24);
 }
 
-function getXPos(x){
-	return (x-centerX)/xScale;
-}
-function getYPos(y){
-	return (y-centerY)/yScale;
+function drawEnding() {
+  // dim garden
+  fill(0, 180);
+  rect(0, 0, width, height);
+
+  fill(240);
+  textAlign(CENTER, CENTER);
+  textSize(26);
+  let title = scene === 'endingB' ? "The garden keeps what you planted." : "Some seeds prefer the next rain.";
+  text(title, width/2, height/2 - 40);
+
+  textSize(18);
+  let body = scene === 'endingB'
+    ? "With enough blooms, the city breathes through leaves.\nYou leave a small light behind for anyone passing."
+    : "You carry a pocket of soil and a list of names.\nTomorrow, the stems will remember you.";
+
+  text(body, width/2, height/2 + 10);
+
+  fill(180);
+  textSize(14);
+  text("Press R or click Restart to plant again", width/2, height/2 + 80);
 }
 
-function getXPrint(x){
-	return xScale*x+centerX;
+function getHoveredFlower() {
+  for (let i = flowers.length - 1; i >= 0; i--) {
+    if (flowers[i].isHover(mouseX, mouseY)) return flowers[i];
+  }
+  return null;
 }
-function getYPrint(y){
-	return yScale*y+centerY;
+
+function mousePressed() {
+  if (scene !== 'garden') return;
+  flowers.push(new Flower(mouseX, mouseY));
+  plantedCount++;
 }
+
+function keyPressed() {
+  if (scene === 'garden') {
+    if (key === '1') currentTheme = 'sight';
+    if (key === '2') currentTheme = 'sound';
+    if (key === '3') currentTheme = 'smell';
+    if (key === 'm' || key === 'M') currentTheme = 'mixed';
+    if (key === 'e' || key === 'E') btnEnd.elt.click();
+  } else {
+    if (key === 'r' || key === 'R') btnRestart.elt.click();
+  }
+}
+
+function toggleButtons() {
+  if (scene === 'garden') {
+    btnEnd.show(); btnRestart.hide();
+  } else {
+    btnEnd.hide(); btnRestart.show();
+  }
+}
+
+function getFragment() {
+  if (currentTheme === 'mixed') {
+    let pool = [].concat(fragments.sight, fragments.sound, fragments.smell);
+    return random(pool);
+  }
+  return random(fragments[currentTheme]);
+}
+
+function drawFragmentBubble(txt, x, y) {
+  let pad = 10;
+  textSize(16);
+  let w = textWidth(txt) + pad*2;
+  let h = 28;
+  let bx = constrain(x + 14, 10, width - w - 10);
+  let by = constrain(y - 20, 10, height - h - 10);
+  fill(30, 30, 30, 230);
+  rect(bx, by, w, h, 10);
+  fill(235);
+  textAlign(LEFT, CENTER);
+  text(txt, bx + pad, by + h/2);
+}
+
+class Flower {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.seed = random(10000);
+    this.r = random(6, 10);       // base radius
+    this.petals = floor(random(5, 9));
+    this.hue = random([180, 210, 260, 300]); // cool palette
+    this.scale = 0.2;
+  }
+  update(speed) {
+    // subtle bobbing with noise; scale grows to 1.0
+    this.scale = min(1.0, this.scale + 0.002 * speed);
+    this.y += map(noise(this.seed + frameCount*0.01), 0, 1, -0.05, 0.05) * speed;
+  }
+  isHover(mx, my) {
+    let d = dist(mx, my, this.x, this.y);
+    return d < this.r * 10 * this.scale;
+  }
+  draw() {
+    push();
+    translate(this.x, this.y);
+
+    // stem
+    stroke(60, 120, 70);
+    strokeWeight(2);
+    line(0, 0, 0, 30 * this.scale);
+    noStroke();
+
+    // petals (parametric by slider via scale)
+    let R = this.r * 6 * this.scale;
+    for (let i = 0; i < this.petals; i++) {
+      let ang = (TAU / this.petals) * i + noise(this.seed + i)*0.2;
+      let px = cos(ang) * R;
+      let py = sin(ang) * R;
+      fill(this.hue, 120, 200, 160);
+      push();
+      translate(px, py);
+      rotate(ang);
+      ellipse(0, 0, this.r * 2.2 * this.scale, this.r * 6 * this.scale);
+      pop();
+    }
+
+    // center
+    fill(250, 230, 120, 220);
+    ellipse(0, 0, this.r * 5 * this.scale, this.r * 5 * this.scale);
+    pop();
+  }
+}
+
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
